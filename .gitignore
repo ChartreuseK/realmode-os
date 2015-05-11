@@ -1,0 +1,6 @@
+*.img
+floppyloader
+stage2
+kernel
+mnt/
+*.swp
