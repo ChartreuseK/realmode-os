@@ -18,4 +18,4 @@ mount:
 	sudo mount -t msdos -o loop,uid=$$USER,gid=$$USER realos.img mnt/
 
 umount: 
-    sudo umount mnt/
+	sudo umount mnt/
