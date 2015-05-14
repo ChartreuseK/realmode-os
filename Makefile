@@ -10,12 +10,26 @@ floppyloader: floppyloader.asm
 stage2: stage2.asm
 	$(ASM) $(ASMFLATFLAGS) stage2.asm
 
+kernel: kernel.asm
+	$(ASM) $(ASMFLATFLAGS) kernel.asm
 
 installloader:
 	dd if=floppyloader of=$(FLOPPYIMAGE) conv=notrunc
+
+installstage2: stage2
+	sudo mount -t msdos -o loop,uid=$$USER,gid=$$USER realos.img mnt/
+	cp stage2 mnt/stage2.bin
+	sudo umount mnt/
+
+installkernel: kernel
+	sudo mount -t msdos -o loop,uid=$$USER,gid=$$USER realos.img mnt/
+	cp kernel mnt/kernel.bin
+	sudo umount mnt/
 
 mount:
 	sudo mount -t msdos -o loop,uid=$$USER,gid=$$USER realos.img mnt/
 
 umount: 
 	sudo umount mnt/
+
+

@@ -1,0 +1,25 @@
+=================================
+-Realmode Operating System Ideas-
+=================================
+
+
+Memory Map:
+
+0x00000 - 0x003FF    |     Interrupt Vector Table
+0x00400 - 0x004FF	 |     BIOS Data Area
+0x00500 - 0x10000	 |     Kernel Data
+0x10000 - 0x?????    |     Main Kernel
+
+0x????? - 0x7FFFF    |     Program memory
+0x80000 - EBDA		 |     Extra program memory (if it exists)
+EBDA    - 0xA0000    |     Extended BIOS Data Area (Int 12h)
+
+
+
+
+Ideas:
+	Have a main kernel section that is always loaded and running, with
+	a module section where the main section can load a module in from
+	disk. Only one module can run at a time. To do this the main kernel
+	would have to implement task switching, interrupts, and memory 
+	management. 

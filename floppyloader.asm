@@ -23,7 +23,7 @@
 %define NUM_FATS            2
 %define NUM_HEADS           2
 %define SECTORS_PER_TRACK   18
-
+%define MEDIA_DESCRIPTOR 	0xf0
 %define TRACKS_PER_SIDE     ((TOTAL_SECTORS / SECTORS_PER_TRACK)/2)
 
 %define FAT_SECTOR          RESERVED_SECTORS
@@ -42,7 +42,7 @@ dw RESERVED_SECTORS             ; Bytes 14-15 - Reserved Sectors (This one)
 db NUM_FATS                     ; Byte  16    - Number of FATs
 dw DIRECTORY_ENTRIES            ; Bytes 17-18 - Root Directory Entries
 dw TOTAL_SECTORS                ; Bytes 19-20 - Total Number of Sectors
-db 0xf0                         ; Byte  21    - Media Descriptor Type
+db MEDIA_DESCRIPTOR             ; Byte  21    - Media Descriptor Type
 dw SECTORS_PER_FAT              ; Bytes 22-23 - Sectors per FAT
 dw SECTORS_PER_TRACK            ; Bytes 24-25 - Sectors per Track
 dw NUM_HEADS                    ; Bytes 26-27 - Number of Heads/Sides
@@ -105,7 +105,7 @@ driveReset:
     call readFloppy
 
     
-    ; Look through the directory entries for KERNEL  BIN
+    ; Look through the directory entries for Stage  BIN
     mov si, stageFileName       ; First operand offset (segment in ds)
     mov di, 0                   ; Start at the first entry
     mov cx, FILENAME_LENGTH      
@@ -114,12 +114,12 @@ driveReset:
 cmpEntry:
     push di                     ; Save the start of the current
     repe cmpsb                  ; Compare the strings
-    je foundKernel    
+    je foundStage    
 
 
 nextEntry:
     pop di                      ; Restore DI
-    add di, 32                  ; Move to the next entry
+    add di, BYTES_PER_ENTRY     ; Move to the next entry
 
     mov si, stageFileName
     mov cx, FILENAME_LENGTH
@@ -128,13 +128,13 @@ nextEntry:
     jnz cmpEntry
     
     ; Could not find the stage
-    mov si, msgNoKernel
+    mov si, msgNoStage
     call printStr
     mov ah, 0                   
     int 16h                     ; Wait for a keypress
     int 19h                     ; Reboot
 
-foundKernel:
+foundStage:
     pop di
     mov ax, WORD [es:di+26]     ; Read in the starting cluster
     mov WORD [startingCluster], ax  ; Keep it safe
@@ -143,7 +143,7 @@ foundKernel:
     ; mov bx, WORD [es:di+28]   ; Read in the low half of the size
     ; mov dx, WORD [es:di+30]   ; Read in the high half of the size
     
-    mov si, msgFoundKernel
+    mov si, msgFoundStage
     call printStr
 
     ; Read in the FAT
@@ -168,7 +168,7 @@ foundKernel:
     mov cx, SECTORS_PER_CLUSTER 
     mul cx                      ; Multiply ax by cx into ax
     add ax, ROOT_DIR_SECTOR + ROOT_DIR_SECTORS
-    mov cl, 1                   ; Read in one sector
+    mov cl, SECTORS_PER_CLUSTER ; Read in one sector
     
     call readFloppy
     add bx, SECTORS_PER_CLUSTER * BYTES_PER_SECTOR  ; Move forward in ram
@@ -178,7 +178,8 @@ foundKernel:
 
     jb .next                    ; If it's a valid sector, keep going
     
-    ; We're done loading, jump to the kernel
+    ; We're done loading, jump to the Stage
+    mov bl, BYTE [bootDrive]
     jmp STAGE_SEGMENT:0
 
 haltLoop:
@@ -306,10 +307,10 @@ readFloppy:
 
 
 msgEnter       db "Floppy Bootloader",10,13,0
-msgNoKernel    db "stage2.bin not found",10,13,0
-msgFoundKernel db "Found Stage 2",10,13,0
+msgNoStage     db "stage2.bin not found",10,13,0
+msgFoundStage  db "Found Stage 2",10,13,0
 diskError      db "Disk Error",10,13,0
-stageFileName db "STAGE2  BIN"
+stageFileName  db "STAGE2  BIN"
 
 startingCluster dw 0x0000
 bootDrive       db 0x00
