@@ -238,7 +238,7 @@ findKernel:
     
     mov ax, WORD [es:di+26]     ; Read in the starting cluster
     
-
+    ret
 
 
 
