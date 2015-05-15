@@ -15,7 +15,7 @@
 ;
 [bits 16]
 [org   0]
-
+[cpu 8086]  ; Attempt to stop me from using any 286 instructions
 %define KERNEL_SEGMENT 0x1000
 %define KERNEL_OFFSET  0x0000
 
@@ -106,7 +106,9 @@ loadKernel:
 ;   bx - offset loaded at
 ;   es - segment loaded at
 printRead:
-    pusha
+    ;pusha
+    push ax
+    push si
     mov si, msgReadBlock1       ; Start of message
     call printStr
     call printHexPrefix         ; 0x
@@ -124,7 +126,9 @@ printRead:
     mov ax, bx                  ; Finally print the offset
     call printNum
     call printNewline           ; And end the line
-    popa
+    pop ax
+    pop si
+    ;popa
     ret
 
 ; Get the next cluster from the FAT
@@ -154,7 +158,10 @@ nextCluster:
     and dx, 0x0FFF              ; Mask off the upper 4 bits
     jmp .found
  .odd:
-    shr dx, 4                   ; Shift down to keep only the upper 12 bits
+    shr dx, 1                   ; Shift down to keep only the upper 12 bits
+    shr dx, 1
+    shr dx, 1
+    shr dx, 1
  .found:
     mov ax, dx                  ; Our return value
     pop es
@@ -250,8 +257,11 @@ findKernel:
 ;     cl - Number of segments to load
 
 readFloppy:
-    pusha                       ; Save GP Registers
-    mov bp,sp                   ; Save stack pointer
+    ;pusha                       ; Save GP Registers
+    push ax
+    push bx
+    push cx
+    push dx
 
     push bx                     ; Save offset
     mov  bl, cl                 ; Save number of segments
@@ -289,8 +299,11 @@ readFloppy:
     call restart                ; Die and restart
     
  .success:
-    mov sp, bp                  ; Restore stack
-    popa                        ; Restore registers
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ;popa                        ; Restore registers
     ret                         ; Return
 
 
@@ -303,8 +316,9 @@ readFloppy:
 ; Arguments:
 ;     si - Address of string
 printStr:
-    pusha                       ; Save all GP registers
-    mov bp, sp                  ; Save the old stack pointer
+    ;pusha                       ; Save all GP registers
+    push ax
+    push si
 
 .loop:
     lodsb                       ; Read character from string into AL
@@ -317,15 +331,19 @@ printStr:
     jmp .loop
 
  .done:
-    mov sp, bp                  ; Restore stack pointer
-    popa                        ; Restore GP registers
+    ; popa                        ; Restore GP registers
+    pop si
+    pop ax
     ret
 
 ; Print a hex number
 ; Arguments:
 ;   ax - number
 printNum:
-    pusha
+    push ax
+    push bx
+    push cx
+
     mov cl, 12                  ; Left most digit
     mov bx, ax                  ; Save our number
 
@@ -344,7 +362,9 @@ printNum:
     sub cl, 4                   ; Shift to the next digit
     jge .next
     
-    popa
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Prints a 32-bit number in hex
@@ -375,12 +395,12 @@ printHexPrefix:
 
 ; Print a cr/nl
 printNewline:
-    pusha
+    push ax
     mov ax, 0x0e0a
     int 10h
     mov ax, 0x0e0d
     int 10h
-    popa
+    pop ax
     ret
 
     

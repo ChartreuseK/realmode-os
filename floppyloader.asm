@@ -1,5 +1,7 @@
 [bits 16]
 [org 0]
+[cpu 8086] ; Attempt to stop me from accidentally using 286 instructions
+
 ; Where we'll load in the stage2
 ; Since we're located at 07C0:0000 and we're loading at 0100:000
 ; That leaves us 0x6C00 bytes or 27648 bytes for the stage 2 loader
@@ -215,7 +217,10 @@ nextCluster:
     and dx, 0x0FFF              ; Mask off the upper 4 bits
     jmp .found
  .odd:
-    shr dx, 4                   ; Shift down to keep only the upper 12 bits
+    shr dx, 1                   ; Shift down to keep only the upper 12 bits
+    shr dx, 1
+    shr dx, 1
+    shr dx, 1
  .found:
     mov ax, dx                  ; Our return value
     pop es
@@ -229,8 +234,9 @@ nextCluster:
 ; Arguments:
 ;     si - Address of string
 printStr:
-    pusha                       ; Save all GP registers
-    mov bp, sp                  ; Save the old stack pointer
+    ;pusha                       ; Save all GP registers
+    push ax
+    push si
 
 .loop:
     lodsb                       ; Read character from string into AL
@@ -243,8 +249,9 @@ printStr:
     jmp .loop
 
  .done:
-    mov sp, bp                  ; Restore stack pointer
-    popa                        ; Restore GP registers
+    ;popa                        ; Restore GP registers
+    pop si
+    pop ax
     ret
 
 	
@@ -256,9 +263,12 @@ printStr:
 ;     ax - Sector to load (cylinder/head calculated)
 ;     cl - Number of segments to load
 readFloppy:
-    pusha                       ; Save GP Registers
-    mov bp,sp                   ; Save stack pointer
-
+    ;pusha                       ; Save GP Registers
+    push ax
+    push bx
+    push cx
+    push dx
+    
     push bx                     ; Save offset
     mov  bl, cl                 ; Save number of segments
     ; Convert LBA/logical sector to CHS
@@ -296,8 +306,11 @@ readFloppy:
     int 19h                     ; Reset
 
  .success:
-    mov sp, bp                  ; Restore stack
-    popa                        ; Restore registers
+    ;popa                        ; Restore registers
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret                         ; Return
 
 

@@ -5,6 +5,7 @@
 
 [BITS 16]
 [ORG 0]
+[CPU 8086]  ; Attempt to stop me from using 286 instructions
 
 start:
     mov ax, cs
@@ -14,25 +15,12 @@ start:
     mov si, msgEnter
     call printStr
     
-    
-    mov si, msgMemory1
-    call printStr
-    
     xor ax, ax
     int 12h             ; Request amount of low memory (in ax kB)
-    
-    call printHex
-    mov si, msgMemory2
-    call printStr
-    
-    mov ax, testStr
     push ax
-    mov ax, 1234
-    push ax
-    mov ax, 0xDEAD
-    push ax
-    mov si, printfTest
+    mov si, msgMemory
     call printf
+    add sp, 1 * 2       ; Pop off the argument
 
 haltLoop:
     hlt
@@ -47,9 +35,13 @@ haltLoop:
 ;   si - Format string
 ;   remaining arguments are pushed on stack
 printf:
-    pusha
+    push ax
+    push dx
+    push si
+    push bp
     mov bp, sp
-    mov di, 2 * 9      ; Pusha pushes 8 registers onto the stack + ret
+
+    mov di, 2 * 5      ; We pushed 4 arguments on the stack + return ptr
     
     
  .loop:
@@ -167,23 +159,28 @@ printf:
     ; End the format string here
     
  .end:
-    popa
+    pop bp
+    pop si
+    pop dx
+    pop ax
     ret
 
 ; Writes a character to the screen
 ; Arguments:
 ;   al - Character to write
 putch:
+    push ax
     mov ah, 0x0e
     int 10h
+    pop ax
     ret
 
 ; Print's a message at the current cursor position to the screen
 ; Arguments:
 ;     si - Address of string
 printStr:
-    pusha                       ; Save all GP registers
-    mov bp, sp                  ; Save the old stack pointer
+    push ax
+    push si
 
 .loop:
     lodsb                       ; Read character from string into AL
@@ -257,15 +254,20 @@ printStr:
     ; End the format string here
 
  .done:
-    mov sp, bp                  ; Restore stack pointer
-    popa                        ; Restore GP registers
+    pop si
+    pop ax
     ret
 
 ; Print a hex number
 ; Arguments:
 ;   ax - number
+; TODO:
+;   More optimal shift algoritm, shr ax, cl costs 8 + 4n !
 printHex:
-    pusha
+    push ax
+    push bx
+    push cx
+
     mov cl, 12                  ; Left most digit
     mov bx, ax                  ; Save our number
 
@@ -284,7 +286,9 @@ printHex:
     sub cl, 4                   ; Shift to the next digit
     jge .next
     
-    popa
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Prints a 32-bit number in hex
@@ -316,8 +320,11 @@ printHexPrefix:
 ; Arguments:
 ;   ax - Number
 printDec:
-    pusha
-    mov bp, sp          ; Update the base pointer
+    push ax
+    push bx
+    push cx
+    push dx
+
     xor dx, dx          ;
     push dx             ; Store a 0 so we know when we're done
     
@@ -339,7 +346,10 @@ printDec:
     call putch          ; Print the digit
     jmp .ploop
  .done:
-    popa
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 
@@ -348,12 +358,12 @@ printDec:
 
 ; Print a cr/nl
 printNewline:
-    pusha
+    push ax
     mov ax, 0x0e0a
     int 10h
     mov ax, 0x0e0d
     int 10h
-    popa
+    pop ax
     ret
 
     
@@ -369,8 +379,5 @@ restart:
 
 msgEnter        db "Entered the Kernel!",10,13,0
 msgRestart      db "Press any key to restart the computer...",0
-msgMemory1      db "Found 0x",0
-msgMemory2      db "kB of free low memory.",10,13,0
+msgMemory       db "Found %dkB low memory installed\r\n",0
 
-testStr         db "This is a string!\r\n",0
-printfTest      db "This is a test of printf, hex: 0x%x, decimal: %d, string: %s, Percent %%\r\n",0
