@@ -1,4 +1,4 @@
-;
+; kernel.asm
 ;
 ;
 ;
@@ -16,11 +16,38 @@ start:
     call printStr
     
     xor ax, ax
-    int 12h             ; Request amount of low memory (in ax kB)
+    int 12h             ; Request amount of low memory (kB in ax)
     push ax
     mov si, msgMemory
     call printf
     add sp, 1 * 2       ; Pop off the argument
+
+    
+cmdLoop:
+    mov si, msgPrompt
+    call printf
+
+    mov di, buff
+    mov ax, 256         ; Max length
+    call gets
+    call printNewline
+    
+    
+    mov si, cmdHello
+    call strcmp
+    test al, al
+    je hello
+        
+    jmp cmdLoop
+
+hello:
+    mov si, msgHello
+    call printf
+    jmp cmdLoop
+    
+dir:
+    
+
 
 haltLoop:
     hlt
@@ -28,6 +55,68 @@ haltLoop:
 
 
 
+; Uses bios functions to get a character from the keyboard, blocking
+; Return:
+;    al - ASCII Character
+;    ax - Scancode 
+bios_getch:
+    mov ah, 0                   ; Wait and Read Character
+    int 16h                     ; Keyboard functions
+    ret
+    
+    
+; Gets a string from the user
+; Arguments:
+;    ax - Max length
+;    es:di - Buffer 
+; Returns:
+;    ax - Bytes Read
+gets:
+    push di
+    push bx
+    
+    push ax                     ; Save original max length (for bytes read
+    mov bx, ax                  
+ .loop:
+    call bios_getch
+    cmp al, 10                  ; Line feed
+    je  .end
+    cmp al, 13                  ; Character return
+    je  .end
+    cmp al, 8                   ; Backspace
+    je  .bksp
+    
+    dec bx
+    jz .full                    ; If bx is 0, and this wasn't a newline
+                                ; Then ignore it
+    call putch                  ; Otherwise echo the character
+    stosb                       ; Then store into the string
+    jmp .loop
+    
+ .full:
+    inc bx                      ; Ignore the character we read
+    jmp .loop
+    
+ .bksp:
+    inc bx                      ; 
+    dec di                      ; Go back in the string
+    call putch                  ; Move the character back one
+    mov al, 32                  ; Space
+    call putch
+    mov al, 8                   ; Backspace
+    call putch
+    
+    jmp .loop                   ; And continue looping
+
+ .end:
+    mov al, 0                   ; End of string
+    stosb                       ; Store at the end of the string
+    pop ax                      ; Max length
+    sub ax, bx                  ; Get number of characters read
+    
+    pop bx                      ; Restore registers
+    pop di
+    ret
 
 
 ; A simple version of printf
@@ -365,7 +454,62 @@ printNewline:
     int 10h
     pop ax
     ret
+    
+; Compares the two strings in di and si
+; Arguments:
+;     ds:si - String 1
+;     es:di - String 2
+; Return:
+;     ax - 0 if equal, <0 if str1<str2, >0 if str1>str2
+strcmp:
+    push di
+    push si
+    push cx
+    
+    call strlen             ; Get length of string 2 (max length to check)
+    mov cx, ax
+    
+    
+    ; Compare the strings
+    cld                     ; Make sure we're incrementing
+    repe cmpsb              ; Find the first non matching byte 
+                            ; (up to cx into string)
+    
+    mov al, BYTE [ds:si - 1]; Read in last byte read from str 1
+    mov cl, BYTE [es:di - 1]; Last byte read from str 2
+    sub al, cl              ; Get the difference (if strings were equal
+                            ; Then this is 0, otherwise it gives the 
+                            ; comparison of the first mismatched char
+    
+    pop cx
+    pop si
+    pop di
+    ret
+    
 
+; Finds the length of a null terminated string
+; Arguments:
+;   es:di - String 
+; Return:
+;    ax - Length
+strlen:
+    push cx
+    push di
+    
+    xor ax, ax              ; We want to go till we hit NULL terminator
+    xor cx, cx
+    not cx                  ; Maximum string length of 65536
+    
+    cld                     ; Make sure we're incrementing
+    repne scasb             ; Go through the string till we find the null
+    
+    dec ax                  ; 65536 (Starting value in cx)
+    sub ax, cx              ; Get the number of bytes we read
+    dec ax                  ; -1 for the null
+
+    pop di
+    pop cx
+    ret
     
 ; Restarts the computer after waiting for a keypress
 ;
@@ -380,4 +524,10 @@ restart:
 msgEnter        db "Entered the Kernel!",10,13,0
 msgRestart      db "Press any key to restart the computer...",0
 msgMemory       db "Found %dkB low memory installed\r\n",0
+msgPrompt       db "> ",0
+msgStrDebug     db "strcmp result: %d, input strlen: %d\r\n",0
+msgHello        db "Hello world!\r\n",0
 
+cmdHello        db "hello",0
+
+buff times 256 db 0

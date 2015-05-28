@@ -21,29 +21,21 @@
 
 %define SCRATCH_SEGMENT 0x7c0   ; We'll use the space occupied by stage 1 as scratch
 
-%define SECTORS_PER_TRACK   18
-%define NUM_HEADS           2
-%define FAT_SECTOR          RESERVED_SECTORS
-%define ROOT_DIR_SECTOR     ( FAT_SECTOR + (SECTORS_PER_FAT * NUM_FATS) )
-%define RESERVED_SECTORS    1
-%define SECTORS_PER_FAT     9
-%define NUM_FATS            2
-%define DIRECTORY_ENTRIES   224
 %define BYTES_PER_ENTRY     32
-%define SECTORS_PER_CLUSTER 1
 %define FILENAME_LENGTH     11
-%define ROOT_DIR_SECTORS    ( (DIRECTORY_ENTRIES * BYTES_PER_ENTRY) / 512 )
-%define BYTES_PER_SECTOR    512
+
 
 start:
     mov ax, cs              ; Get our current segment
     mov ds, ax              ; Set our data segment to the current
     mov es, ax              ; 
     
-    mov [bootDrive], bl     ; Save the boot drive that was passed to us
+    mov BYTE [bootDrive], bl     ; Save the boot drive that was passed to us
     
     mov si, msgEnter
     call printStr
+    
+    ;call loadDriveInfo      ; Get the drive info from the boot sector
 
     call findKernel
     
@@ -69,13 +61,22 @@ loadKernel:
     mov ax, KERNEL_SEGMENT      ; We'll be loading to here
     mov es, ax
     
+    ; Calculate the bytes per cluster
+    xor ah, ah
+    mov al, BYTE [sectors_per_cluster]
+    mov bx, WORD [bytes_per_sector]
+    mul bx
+    mov dx, ax                  ; Bytes per cluster
+    
+    
+    
     mov ax, WORD [startingCluster]
     xor bx, bx                  ; Initial offset
-
+    
  .next:
     push ax                     ; Save current cluster
     call clustToLBA
-    mov cl, SECTORS_PER_CLUSTER ; Read in the cluster
+    mov cl, BYTE [sectors_per_cluster] ; Read in the cluster
     call readFloppy
     call printRead              ; Show that we read the cluster in
     pop ax                      ; Get the last cluster read
@@ -85,7 +86,8 @@ loadKernel:
     cmp ax, 0xFF0               ; Check if this is the end of the chain 
     jge .done
     
-    add bx, SECTORS_PER_CLUSTER * BYTES_PER_SECTOR
+    add bx, dx
+    
     jno .next                   ; If we didn't overflow the offset cont.
     ; We overflowed the segment
     mov cx, ax                  ; Save ax for a second
@@ -174,10 +176,14 @@ nextCluster:
 ; Convert a cluster to logical block
 clustToLBA:
     push cx                     ; Save cx
+    push dx
     sub ax, 2                   ; Subtract 2 to zero the cluster number
-    mov cx, SECTORS_PER_CLUSTER 
+    xor ch, ch
+    mov cl, BYTE [sectors_per_cluster]
     mul cx                      ; Multiply ax by cx into ax
-    add ax, ROOT_DIR_SECTOR + ROOT_DIR_SECTORS
+    add ax, WORD [root_dir_sector]
+    add ax, WORD [root_dir_sectors]
+    pop dx
     pop cx
     ret
     
@@ -186,9 +192,9 @@ clustToLBA:
 loadFat:
     mov ax, SCRATCH_SEGMENT
     mov es, ax                  ; Segment to load at
-    mov ax, FAT_SECTOR          ; Start sector
+    mov ax, WORD [fat_sector]         ; Start sector
     xor bx, bx                  ; Offset to load at
-    mov cl, SECTORS_PER_FAT     ; Sectors to load
+    mov cl, BYTE [sectors_per_fat]   ; Sectors to load
     call readFloppy
     
     ret
@@ -201,19 +207,22 @@ findKernel:
     mov ax, SCRATCH_SEGMENT
     mov es, ax                  ; Segment to load at
     xor bx, bx                  ; Offset to load at
-    mov ax, ROOT_DIR_SECTOR     ; Start sector
-    mov cl, ROOT_DIR_SECTORS    ; Sectors to load
+    mov ax, WORD [root_dir_sector]   ; Start sector
+    mov cl, BYTE [root_dir_sectors]  ; Sectors to load
     call readFloppy
     
     ; Look through the directory entries for Stage  BIN
     mov si, kernelFileName       ; First operand offset (segment in ds)
     mov di, 0                   ; Start at the first entry
     mov cx, FILENAME_LENGTH      
-    mov al, DIRECTORY_ENTRIES
+    mov ax, WORD [root_dir_entries]
 
  .cmpEntry:
     push di                     ; Save the start of the current
     repe cmpsb                  ; Compare the strings
+    
+    
+    
     je .foundKernel    
 
 
@@ -223,7 +232,7 @@ findKernel:
 
     mov si, kernelFileName
     mov cx, FILENAME_LENGTH
-    dec al
+    dec ax
 
     jnz .cmpEntry
     
@@ -266,14 +275,14 @@ readFloppy:
     push bx                     ; Save offset
     mov  bl, cl                 ; Save number of segments
     ; Convert LBA/logical sector to CHS
-    mov cx, SECTORS_PER_TRACK
+    mov cx, [sectors_per_track]
     xor dx, dx                  ; Clear dx since we're dividing dx:ax by bx
     div cx                      ; Divide Sector / Sectors per track 
     inc dx                      ; Remainder + 1 is the sector
     push dx                     ; Save the sector
 
     xor dx, dx
-    mov cx, NUM_HEADS           ; Now divide the last result by the number
+    mov cx, [num_heads]         ; Now divide the last result by the number
     div cx                      ; of heads
     
     pop cx                      ; Sector in cl
@@ -302,8 +311,7 @@ readFloppy:
     pop dx
     pop cx
     pop bx
-    pop ax
-    ;popa                        ; Restore registers
+    pop ax                      ; Restore registers
     ret                         ; Return
 
 
@@ -429,5 +437,82 @@ msgReadBlock2   db " to ",0
 msgKernelRead   db "Kernel successfully loaded.",10,13,0
 kernelFileName  db "KERNEL  BIN"
 
-    
 
+; Boot drive information
+
+
+sectors_per_track   dw 18
+num_heads           dw 2
+fat_sector          dw 1
+root_dir_sector     dw 19
+reserved_sectors    dw 1
+sectors_per_fat     db 9
+num_fats            db 2
+root_dir_entries    dw 224
+sectors_per_cluster db 1
+root_dir_sectors    dw 14
+bytes_per_sector    dw 512
+total_sectors       dw 2880
+    
+; Reads in the boot drive information from the bootloader that's still
+; located at 07C0:0000
+;
+loadDriveInfo:
+    push es
+    push di
+    
+    mov ax, 0x07C0
+    mov es, ax
+    mov di, 0
+
+
+
+    mov ax, WORD [es:di + 11]           ;
+    mov WORD [bytes_per_sector], ax     ;
+    mov al, BYTE [es:di + 13]           ;
+    mov BYTE [sectors_per_cluster], al  ;
+    
+    mov ax, WORD [es:di + 14]           ;
+    mov WORD [reserved_sectors], ax     ; The first FAT is right after 
+    mov WORD [fat_sector], ax           ; the reserved sectors
+    mov al, BYTE [es:di + 16]           ;
+    mov BYTE [num_fats], al             ;
+    
+    mov ax, WORD [es:di + 17]           ;
+    mov WORD [root_dir_entries], ax     ;
+    
+    ; Calculate the number of sectors the root_dir takes up
+    ; ( (DIRECTORY_ENTRIES * BYTES_PER_ENTRY) / BYTES_PER_SECTOR )
+    mov cl, 5
+    shl ax, cl                          ; Multiply by 32 (bytes per entry)
+    
+    xor dx, dx                          ; Set up for a 16bit divide
+    mov bx, WORD [bytes_per_sector]
+    div bx
+    mov WORD [root_dir_sectors], ax     
+    
+    
+    mov ax, WORD [es:di + 19]           ;
+    mov WORD [total_sectors], ax        ;
+    
+    mov ax, WORD [es:di + 22]           ;
+    mov WORD [sectors_per_fat], ax      ;
+    mov ax, WORD [es:di + 24]           ;
+    mov WORD [sectors_per_track], ax    ;
+    
+    mov ax, WORD [es:di + 26]           ;
+    mov WORD [num_heads], ax            ;
+    
+    xor ah, ah
+    mov al, BYTE [num_fats]             ; Calculate root dir sector
+    mov bx, WORD [sectors_per_fat]
+    mul bx                              ; Multiply ax * bx, result in dx:ax
+    mov bx, WORD [fat_sector]
+    add ax, bx
+    mov WORD [root_dir_sector], ax      
+    
+    
+    
+    pop di
+    pop es
+    ret
