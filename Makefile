@@ -10,7 +10,7 @@ floppyloader: floppyloader.asm
 stage2: stage2.asm
 	$(ASM) $(ASMFLATFLAGS) stage2.asm
 
-kernel: kernel.asm
+kernel: kernel.asm interrupt.asm mem.asm string.asm bios_stdio.asm
 	$(ASM) $(ASMFLATFLAGS) kernel.asm
 
 installloader:
